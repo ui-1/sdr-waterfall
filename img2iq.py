@@ -1,6 +1,11 @@
+import sys
 import numpy as np
 import imageio
 import math
+import argparse
+
+RED = '\033[91m'
+ENDC = '\033[0m'
 
 
 def rgba_to_luma(img: np.ndarray) -> np.ndarray:
@@ -37,17 +42,36 @@ def make_iq(img: np.ndarray, outfile: str) -> None:
         f.write(iq.tobytes())
 
 
-def main(input_image: str, samplerate: int = 192000, linetime: float = 0.01, output: str = 'out.iq') -> None:
-    read: np.ndarray = imageio.v3.imread(input_image)
+def process_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description='Convert PNG images into IQ files, enabling visualization on a '
+                                                 'waterfall plot when broadcast over software-defined radio')
+    parser.add_argument('img', metavar='image_in', type=str, help='Name of the input file, such as example.png')
+    parser.add_argument('lt', metavar='linetime', type=float, help='How many seconds to repeat each line for, such as 0.01')
+    parser.add_argument('sr', metavar='samplerate', type=int, help='Sampling rate, such as 48000')
+    parser.add_argument('out', metavar='iq_out', type=str, help='Name of the output IQ file, such as out.iq')
+    args = parser.parse_args()
+
+    if not args.img.endswith('.png'):
+        print(f'{RED}Error: The provided image has to be a .png{ENDC}\n')
+        parser.print_help()
+        sys.exit(1)
+
+    return args
+
+
+def main() -> None:
+    args = process_arguments()
+
+    read: np.ndarray = imageio.v3.imread(args.img)
     img = np.copy(read)[::-1, ::-1, :]
 
     img = rgba_to_luma(img)
-    img = repeat_lines(img, samplerate, linetime)
+    img = repeat_lines(img, args.sr, args.lt)
     img = image_padding(img)
     img = apply_ifft(img)
 
-    make_iq(img, output)
+    make_iq(img, args.out)
 
 
 if __name__ == '__main__':
-    main('lain.png', linetime=0.01, samplerate=48000)
+    main()
