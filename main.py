@@ -3,49 +3,45 @@ import imageio
 import math
 
 
-def calculate_luma(pixel_rgba):
-    return 0.2126*pixel_rgba[0] + 0.7152*pixel_rgba[1] + 0.0722*pixel_rgba[2]
+def rgba_to_luma(img: np.ndarray) -> np.ndarray:
+    # https://en.wikipedia.org/wiki/Luma_(video)#Use_of_relative_luminance
+    return np.apply_along_axis(lambda rgba: 0.2126*rgba[0] + 0.7152*rgba[1] + 0.0722*rgba[2], 2, img)
 
 
-def RGBA_to_LUMA(imagedata):
-    return np.apply_along_axis(calculate_luma, 2, imagedata)
+def repeat_lines(img: np.ndarray, samplerate: int, linetime: float) -> np.ndarray:
+    samples_per_line_for_1second: float = samplerate / img.shape[1] * 2
+    samples_per_line_for_linetime: float = samples_per_line_for_1second * linetime
+    reps: int = math.ceil(samples_per_line_for_linetime)
+    return np.repeat(img, reps, axis=0) ** 2.
 
 
-def repeat_lines(imagedata, samplerate, linetime):
-    samples_per_line_for_1second = samplerate / imagedata.shape[1] * 2
-    samples_per_line_for_linetime = samples_per_line_for_1second * linetime
-    reps = math.ceil(samples_per_line_for_linetime)
-    return np.repeat(imagedata, reps, axis=0) ** 2.
-
-
-def image_padding(imagedata):
-    width = imagedata.shape[1] * 2
-    img_with_padding = np.zeros((imagedata.shape[0], width))
-    img_with_padding[:, width//4:(width*3//4)] = imagedata
+def image_padding(img: np.ndarray) -> np.ndarray:
+    padded_width: int = img.shape[1] * 2
+    img_with_padding: np.ndarray = np.zeros((img.shape[0], padded_width))
+    img_with_padding[:, padded_width//4:(padded_width*3//4)] = img
     return img_with_padding
 
 
-def apply_ifft(imagedata):
-    ifft = np.fft.ifft(np.fft.ifftshift(imagedata, axes=1), axis=1)
+def apply_ifft(img: np.ndarray) -> np.ndarray:
+    ifft: np.ndarray = np.fft.ifft(np.fft.ifftshift(img, axes=1), axis=1)
     ifft = ifft.flatten()
     ifft /= np.max(ifft)
     return ifft
 
 
-def make_iq(imagedata, output):
-    iq = np.zeros(2 * imagedata.size, dtype=np.float32)
-    iq[0::2] = np.real(imagedata)
-    iq[1::2] = np.imag(imagedata)
-    with open(output, 'wb') as f:
+def make_iq(img: np.ndarray, outfile: str) -> None:
+    iq: np.ndarray = np.zeros(2 * img.size, dtype=np.float32)
+    iq[0::2] = np.real(img)
+    iq[1::2] = np.imag(img)
+    with open(outfile, 'wb') as f:
         f.write(iq.tobytes())
 
 
-def main(input_image, samplerate=192000, linetime=0.01, output='out.iq'):
-    read = imageio.v3.imread(input_image)
-    img = np.copy(read)
+def main(input_image: str, samplerate: int = 192000, linetime: float = 0.01, output: str = 'out.iq') -> None:
+    read: np.ndarray = imageio.v3.imread(input_image)
+    img = np.copy(read)[::-1, ::-1, :]
 
-    img = img[::-1, ::-1, :]
-    img = RGBA_to_LUMA(img)
+    img = rgba_to_luma(img)
     img = repeat_lines(img, samplerate, linetime)
     img = image_padding(img)
     img = apply_ifft(img)
